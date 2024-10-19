@@ -164,7 +164,7 @@ def fit_one_epoch(model_train, model, loss_history, eval_callback, optimizer, ep
             print('Save best model to best_epoch_weights.pth')
             torch.save(model.state_dict(), os.path.join(save_dir, "best_epoch_weights.pth"))
             
-        torch.save(model.state_dict(), os.path.join(save_dir, "last_epoch_weights.pth"))
+        torch.save(model.state_dict(), os.path.join(save_dir, "light_unet.pth"))
 
 def fit_one_epoch_no_val(model_train, model, loss_history, optimizer, epoch, epoch_step, gen, Epoch, cuda, dice_loss, focal_loss, cls_weights, num_classes, fp16, scaler, save_period, save_dir, local_rank=0):
     total_loss      = 0
@@ -269,4 +269,4 @@ def fit_one_epoch_no_val(model_train, model, loss_history, optimizer, epoch, epo
             print('Save best model to best_epoch_weights.pth')
             torch.save(model.state_dict(), os.path.join(save_dir, "best_epoch_weights.pth"))
             
-        torch.save(model.state_dict(), os.path.join(save_dir, "last_epoch_weights.pth"))
+        torch.save(model.state_dict(), os.path.join(save_dir, "light_unet.pth"))

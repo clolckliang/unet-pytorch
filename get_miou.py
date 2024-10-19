@@ -2,8 +2,9 @@ import os
 
 from PIL import Image
 from tqdm import tqdm
-
-from unet import Unet
+#from  unet import Unet
+from UltraLightweightUnet_config import Unet
+#from LightweightUnet_config import Unet
 from utils.utils_metrics import compute_mIoU, show_results
 
 '''
@@ -23,11 +24,11 @@ if __name__ == "__main__":
     #------------------------------#
     #   分类个数+1、如2+1
     #------------------------------#
-    num_classes     = 21
+    num_classes     = 4
     #--------------------------------------------#
     #   区分的种类，和json_to_dataset里面的一样
     #--------------------------------------------#
-    name_classes    = ["background","aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"]
+    name_classes    = ["Background","Inclusions","Patches", "Scratches"]
     # name_classes    = ["_background_","cat","dog"]
     #-------------------------------------------------------#
     #   指向VOC数据集所在的文件夹

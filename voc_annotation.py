@@ -22,8 +22,8 @@ VOCdevkit_path      = 'VOCdevkit'
 if __name__ == "__main__":
     random.seed(0)
     print("Generate txt in ImageSets.")
-    segfilepath     = os.path.join(VOCdevkit_path, 'VOC2007/SegmentationClass')
-    saveBasePath    = os.path.join(VOCdevkit_path, 'VOC2007/ImageSets/Segmentation')
+    segfilepath     = os.path.join(VOCdevkit_path, 'VOC2012/SegmentationClass')
+    saveBasePath    = os.path.join(VOCdevkit_path, 'VOC2012/ImageSets/Segmentation')
     
     temp_seg = os.listdir(segfilepath)
     total_seg = []
@@ -64,7 +64,7 @@ if __name__ == "__main__":
 
     print("Check datasets format, this may take a while.")
     print("检查数据集格式是否符合要求，这可能需要一段时间。")
-    classes_nums        = np.zeros([256], np.int)
+    classes_nums = np.zeros([256], np.int64)  # for 64-bit integers
     for i in tqdm(list):
         name            = total_seg[i]
         png_file_name   = os.path.join(segfilepath, name)

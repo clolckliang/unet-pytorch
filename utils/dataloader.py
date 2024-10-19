@@ -7,6 +7,8 @@ from PIL import Image
 from torch.utils.data.dataset import Dataset
 
 from utils.utils import cvtColor, preprocess_input
+import albumentations as A
+
 
 
 class UnetDataset(Dataset):
@@ -133,6 +135,96 @@ class UnetDataset(Dataset):
         image_data = cv2.cvtColor(image_data, cv2.COLOR_HSV2RGB)
         
         return image_data, label
+
+
+
+from torch.utils.data import Dataset
+
+class UltraLightweightUnetDataset(Dataset):
+    def __init__(self, annotation_lines, input_shape, num_classes, train, dataset_path):
+        super(UltraLightweightUnetDataset, self).__init__()
+        self.annotation_lines = annotation_lines
+        self.length = len(annotation_lines)
+        self.input_shape = input_shape
+        self.num_classes = num_classes
+        self.train = train
+        self.dataset_path = dataset_path
+
+        # Define the augmentations
+
+
+        self.transforms = A.Compose([
+            A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.5),
+            A.RandomRotate90(p=0.5),
+            A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=45, p=0.5),
+            A.OneOf([
+                A.ElasticTransform(alpha=120, sigma=120 * 0.05, p=0.5),
+                A.GridDistortion(p=0.5),
+                A.OpticalDistortion(distort_limit=1, shift_limit=0.5, p=0.5),
+            ], p=0.3),
+            A.OneOf([
+                A.GaussNoise(p=0.5),
+                A.MultiplicativeNoise(p=0.5),
+            ], p=0.2),
+            A.OneOf([
+                A.MotionBlur(p=0.2),
+                A.MedianBlur(blur_limit=3, p=0.1),
+                A.Blur(blur_limit=3, p=0.1),
+            ], p=0.2),
+            A.OneOf([
+                A.CLAHE(clip_limit=2),
+                A.Sharpen(),
+                A.Emboss(),
+            ], p=0.3),
+        ])
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        annotation_line = self.annotation_lines[index]
+        name = annotation_line.split()[0]
+
+        # Load images
+        jpg = Image.open(os.path.join(self.dataset_path, "VOC2012/JPEGImages", name + ".jpg"))
+        png = Image.open(os.path.join(self.dataset_path, "VOC2012/SegmentationClass", name + ".png"))
+
+        # Apply transformations
+        jpg, png = self.apply_augmentations(jpg, png)
+
+        jpg = np.transpose(preprocess_input(np.array(jpg, np.float64)), [2, 0, 1])
+        png = np.array(png)
+        png[png >= self.num_classes] = self.num_classes
+
+        # Convert to one-hot encoding
+        seg_labels = np.eye(self.num_classes + 1)[png.reshape([-1])]
+        seg_labels = seg_labels.reshape((int(self.input_shape[0]), int(self.input_shape[1]), self.num_classes + 1))
+
+        return jpg, png, seg_labels
+
+    def apply_augmentations(self, image, label):
+        # Convert to numpy array for augmentation
+        image = np.array(image)
+        label = np.array(label)
+
+        # Ensure label is in the correct format (single-channel for segmentation)
+        if len(label.shape) == 3:
+            label = label[:, :, 0]
+
+        # Apply augmentations
+        augmented = self.transforms(image=image, mask=label)
+        augmented_image = augmented['image']
+        augmented_label = augmented['mask']
+
+        # Ensure the label matches the input shape
+        augmented_label = Image.fromarray(augmented_label).resize(self.input_shape[::-1], Image.NEAREST)
+
+        return Image.fromarray(augmented_image), augmented_label
+
+    def rand(self, a=0, b=1):
+        return np.random.rand() * (b - a) + a
+
 
 # DataLoader中collate_fn使用
 def unet_dataset_collate(batch):

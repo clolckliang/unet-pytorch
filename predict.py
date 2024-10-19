@@ -3,7 +3,7 @@
 #   整合到了一个py文件中，通过指定mode进行模式的修改。
 #----------------------------------------------------#
 import time
-
+import os
 import cv2
 import numpy as np
 from PIL import Image
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     #   count、name_classes仅在mode='predict'时有效
     #-------------------------------------------------------------------------#
     count           = False
-    name_classes    = ["background","aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"]
+    name_classes    = ["background","Inclusions","Patches", "Scratches"]
     # name_classes    = ["background","cat","dog"]
     #----------------------------------------------------------------------------------------------------------#
     #   video_path          用于指定视频的路径，当video_path=0时表示检测摄像头
@@ -53,7 +53,7 @@ if __name__ == "__main__":
     #   test_interval和fps_image_path仅在mode='fps'有效
     #----------------------------------------------------------------------------------------------------------#
     test_interval = 100
-    fps_image_path  = "img/street.jpg"
+    fps_image_path  = "img/In_11.jpg"
     #-------------------------------------------------------------------------#
     #   dir_origin_path     指定了用于检测的图片的文件夹路径
     #   dir_save_path       指定了检测完图片的保存路径
@@ -75,29 +75,42 @@ if __name__ == "__main__":
         yolo = Unet_ONNX()
 
     if mode == "predict":
-        '''
-        predict.py有几个注意点
-        1、该代码无法直接进行批量预测，如果想要批量预测，可以利用os.listdir()遍历文件夹，利用Image.open打开图片文件进行预测。
-        具体流程可以参考get_miou_prediction.py，在get_miou_prediction.py即实现了遍历。
-        2、如果想要保存，利用r_image.save("img.jpg")即可保存。
-        3、如果想要原图和分割图不混合，可以把blend参数设置成False。
-        4、如果想根据mask获取对应的区域，可以参考detect_image函数中，利用预测结果绘图的部分，判断每一个像素点的种类，然后根据种类获取对应的部分。
-        seg_img = np.zeros((np.shape(pr)[0],np.shape(pr)[1],3))
-        for c in range(self.num_classes):
-            seg_img[:, :, 0] += ((pr == c)*( self.colors[c][0] )).astype('uint8')
-            seg_img[:, :, 1] += ((pr == c)*( self.colors[c][1] )).astype('uint8')
-            seg_img[:, :, 2] += ((pr == c)*( self.colors[c][2] )).astype('uint8')
-        '''
-        while True:
-            img = input('Input image filename:')
+
+        # 设置图片存放的文件夹路径
+        img_folder = 'img/'
+        # 获取文件夹下所有文件名
+        file_list = os.listdir(img_folder)
+
+        # 遍历文件夹下的所有文件
+        for file_name in file_list:
+            # 构建完整的文件路径
+            file_path = os.path.join(img_folder, file_name)
+
             try:
-                image = Image.open(img)
-            except:
-                print('Open Error! Try again!')
-                continue
-            else:
+                # 使用PIL打开图像
+                image = Image.open(file_path)
+                # 使用模型进行推理
                 r_image = unet.detect_image(image, count=count, name_classes=name_classes)
+                # 显示推理结果
                 r_image.show()
+
+                # 保存推理结果为图片文件
+                save_path = os.path.join(img_folder, f"seg_{file_name}")
+                r_image.save(save_path)
+
+                # 获取不带扩展名的文件名
+                base_name = os.path.splitext(file_name)[0]
+                # 将推理结果转换为NumPy数组
+                r_image_array = np.array(r_image)
+                # 保存推理结果为.npy文件，确保文件名中不包含.jpg
+                npy_save_path = os.path.join(img_folder, f"seg_{base_name}.npy")
+                np.save(npy_save_path, r_image_array)
+
+                print(f"图片 {file_name} 的分割结果已保存为图片和.npy文件。")
+
+            except Exception as e:
+                print(f"处理图片 {file_name} 时发生错误: {e}")
+
 
     elif mode == "video":
         capture=cv2.VideoCapture(video_path)

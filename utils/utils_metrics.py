@@ -114,14 +114,17 @@ def compute_mIoU(gt_dir, pred_dir, png_name_list, num_classes, name_classes=None
     #------------------------------------------------#
     if name_classes is not None:
         for ind_class in range(num_classes):
-            print('===>' + name_classes[ind_class] + ':\tIou-' + str(round(IoUs[ind_class] * 100, 2)) \
-                + '; Recall (equal to the PA)-' + str(round(PA_Recall[ind_class] * 100, 2))+ '; Precision-' + str(round(Precision[ind_class] * 100, 2)))
+            if ind_class < len(IoUs) and ind_class < len(name_classes):
+                print(f'===> {name_classes[ind_class]}: IoU-{round(IoUs[ind_class] * 100, 2)}; Recall (equal to the PA)-{round(PA_Recall[ind_class] * 100, 2)}; Precision-{round(Precision[ind_class] * 100, 2)}')
+            else:
+                print(f'Warning: Index {ind_class} out of range for IoUs or name_classes.')
 
     #-----------------------------------------------------------------#
     #   在所有验证集图像上求所有类别平均的mIoU值，计算时忽略NaN值
     #-----------------------------------------------------------------#
-    print('===> mIoU: ' + str(round(np.nanmean(IoUs) * 100, 2)) + '; mPA: ' + str(round(np.nanmean(PA_Recall) * 100, 2)) + '; Accuracy: ' + str(round(per_Accuracy(hist) * 100, 2)))  
-    return np.array(hist, np.int), IoUs, PA_Recall, Precision
+    print('===> mIoU: ' + str(round(np.nanmean(IoUs) * 100, 2)) + '; mPA: ' + str(round(np.nanmean(PA_Recall) * 100, 2)) + '; Accuracy: ' + str(round(per_Accuracy(hist) * 100, 2)))
+    return np.array(hist, np.int32), IoUs, PA_Recall, Precision
+
 
 def adjust_axes(r, t, fig, axes):
     bb                  = t.get_window_extent(renderer=r)
