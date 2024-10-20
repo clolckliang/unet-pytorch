@@ -12,7 +12,7 @@ backbone = "lightweight_vgg"
 #model = Unet(num_classes=num_classes, pretrained=pretrained, backbone=backbone)
 model = UltraLightweightUnet(num_classes=num_classes)
 # Load the model state dict from a .pth file
-model_path = "logs/ep100-loss0.147-val_loss0.238.pth"  # 根据你的模型路径修改
+model_path = "logs/best_epoch_weights.pth"  # 根据你的模型路径修改
 model.load_state_dict(torch.load(model_path, weights_only=True))
 
 # Calculate the number of parameters

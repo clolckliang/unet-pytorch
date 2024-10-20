@@ -126,6 +126,88 @@ def compute_mIoU(gt_dir, pred_dir, png_name_list, num_classes, name_classes=None
     return np.array(hist, np.int32), IoUs, PA_Recall, Precision
 
 
+import numpy as np
+import os
+from os.path import join
+
+
+def compute_mIoU_npy(gt_dir, pred_dir, image_ids, num_classes, name_classes=None):
+    print('Num classes', num_classes)
+
+    hist = np.zeros((num_classes, num_classes))
+    processed_images = 0
+    skipped_images = 0
+
+    for image_id in image_ids:
+        gt_path = join(gt_dir, f"ground_truth_{image_id}.npy")
+        pred_path = join(pred_dir, f"prediction_{image_id}.npy")
+
+        # 检查地面真值文件
+        if not os.path.exists(gt_path):
+            print(f"Warning: Ground truth file not found for {image_id}. Trying without 'ground_truth_' prefix...")
+            gt_path = join(gt_dir, f"{image_id}.npy")
+            if not os.path.exists(gt_path):
+                print(f"Error: Could not find ground truth file for {image_id}. Skipping...")
+                skipped_images += 1
+                continue
+
+        # 检查预测文件
+        if not os.path.exists(pred_path):
+            print(f"Warning: Prediction file not found for {image_id}. Trying without 'prediction_' prefix...")
+            pred_path = join(pred_dir, f"{image_id}.npy")
+            if not os.path.exists(pred_path):
+                print(f"Error: Could not find prediction file for {image_id}. Skipping...")
+                skipped_images += 1
+                continue
+
+        try:
+            pred = np.load(pred_path)
+            label = np.load(gt_path)
+        except Exception as e:
+            print(f"Error loading files for {image_id}: {str(e)}. Skipping...")
+            skipped_images += 1
+            continue
+
+        if label.size != pred.size:
+            print(f'Size mismatch: gt size = {label.size}, pred size = {pred.size}, {gt_path}, {pred_path}')
+            skipped_images += 1
+            continue
+
+        hist += fast_hist(label.flatten(), pred.flatten(), num_classes)
+        processed_images += 1
+
+        if processed_images % 10 == 0:
+            print(f'{processed_images} / {len(image_ids)} processed')
+
+    print(f"Processed {processed_images} images. Skipped {skipped_images} images.")
+
+    if processed_images == 0:
+        print("Error: No images were successfully processed. Cannot compute metrics.")
+        return None, None, None, None
+
+    IoUs = per_class_iu(hist)
+    PA_Recall = per_class_PA_Recall(hist)
+    Precision = per_class_Precision(hist)
+
+    if name_classes is not None:
+        for ind_class in range(num_classes):
+            if ind_class < len(IoUs) and ind_class < len(name_classes):
+                print(
+                    f'===> {name_classes[ind_class]}: IoU-{IoUs[ind_class]:.4f}; Recall-{PA_Recall[ind_class]:.4f}; Precision-{Precision[ind_class]:.4f}')
+
+    mIoU = np.nanmean(IoUs)
+    mPA = np.nanmean(PA_Recall)
+    mPrecision = np.nanmean(Precision)
+    Accuracy = per_Accuracy(hist)
+
+    print(f'===> mIoU: {mIoU:.4f}; mPA: {mPA:.4f}; mPrecision: {mPrecision:.4f}; Accuracy: {Accuracy:.4f}')
+    return np.array(hist, np.int32), IoUs, PA_Recall, Precision
+
+
+
+
+
+
 def adjust_axes(r, t, fig, axes):
     bb                  = t.get_window_extent(renderer=r)
     text_width_inches   = bb.width / fig.dpi
