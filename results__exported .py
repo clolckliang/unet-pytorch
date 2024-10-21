@@ -149,7 +149,7 @@ if __name__ == "__main__":
             np.save(os.path.join(model_pred_dir, file_name), model_pred_np)
 
         print("Get predict result done.")
-    # todo:这里之下还有不少问题
+
     if miou_mode == 0 or miou_mode == 2:
         print("Get miou for baseline model.")
         baseline_hist, baseline_IoUs, baseline_PA_Recall, baseline_Precision = compute_mIoU_npy(
