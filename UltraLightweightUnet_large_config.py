@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from PIL import Image
 from torch import nn
 #from nets.LightWeightUnet import LightweightUnet
-from nets.UltraLightweightUnet import UltraLightweightUnet
+from nets.UltraLightweightUnet_large import UltraLightweightUnet_large
 from utils.utils import cvtColor, preprocess_input, resize_image, show_config
 
 
@@ -26,7 +26,7 @@ class Unet(object):
         #   训练好后logs文件夹下存在多个权值文件，选择验证集损失较低的即可。
         #   验证集损失较低不代表miou较高，仅代表该权值在验证集上泛化性能较好。
         # -------------------------------------------------------------------#
-        "model_path": 'Submit_result/model.pth',
+        "model_path": 'logs/best_epoch_weights.pth',
         # --------------------------------#
         #   所需要区分的类的个数+1
         # --------------------------------#
@@ -87,7 +87,7 @@ class Unet(object):
     #   获得所有的分类
     # ---------------------------------------------------#
     def generate(self, onnx=False):
-        self.net = UltraLightweightUnet(num_classes=self.num_classes)
+        self.net = UltraLightweightUnet_large(num_classes=self.num_classes)
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.net.load_state_dict(torch.load(self.model_path, map_location=device))

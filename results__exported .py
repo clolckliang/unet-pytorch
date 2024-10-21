@@ -33,7 +33,7 @@ def get_model_info():
 
     # 自定义模型参数
     my_model = UltraLightweightUnet(num_classes=num_classes)
-    my_model_path = "model_data/result_model/best_epoch_weights_1020_1:50.pth"  # 根据实际路径修改
+    my_model_path = "Submit_result/model.pth"  # 根据实际路径修改
     my_model.load_state_dict(torch.load(my_model_path, map_location='cpu', weights_only=True))  # 使用weights_only=True
 
     # 计算自定义模型参数数量
@@ -54,9 +54,27 @@ def calculate_fps(model, image, num_iterations=100):
 
 
 def save_metrics_to_txt(metrics_dict, save_path):
-    """Save metrics dictionary to txt file"""
+    """Save metrics dictionary to txt file in the desired format"""
+    results = {
+        "UNet": {
+            "Class1_IoU": metrics_dict.get('UNet_Class1_IoU', 0.0),
+            "Class2_IoU": metrics_dict.get('UNet_Class2_IoU', 0.0),
+            "Class3_IoU": metrics_dict.get('UNet_Class3_IoU', 0.0),
+            "mIoU": metrics_dict.get('UNet_mIoU', 0.0),
+            "FPS": metrics_dict.get('UNet_FPS', 0.0),
+            "Parameters": metrics_dict.get('UNet_Parameters', 0)
+        },
+        "OursModel": {
+            "Class1_IoU": metrics_dict.get('MyModel_Class1_IoU', 0.0),
+            "Class2_IoU": metrics_dict.get('MyModel_Class2_IoU', 0.0),
+            "Class3_IoU": metrics_dict.get('MyModel_Class3_IoU', 0.0),
+            "mIoU": metrics_dict.get('MyModel_mIoU', 0.0),
+            "FPS": metrics_dict.get('MyModel_FPS', 0.0),
+            "Parameters": metrics_dict.get('MyModel_Parameters', 0)
+        }
+    }
     with open(save_path, 'w') as f:
-        f.write(str(metrics_dict))
+        f.write(str(results))
 
 
 if __name__ == "__main__":
@@ -67,7 +85,7 @@ if __name__ == "__main__":
 
     image_ids = open(os.path.join(VOCdevkit_path, "VOC2007/ImageSets/Segmentation/val.txt"), 'r').read().splitlines()
     gt_dir = os.path.join(VOCdevkit_path, "VOC2007/SegmentationClass/")
-    miou_out_path = "miou_out"
+    miou_out_path = "Submit_result"
     pred_dir = os.path.join(miou_out_path, 'detection-results')
 
     # New directories for the required outputs
@@ -131,7 +149,7 @@ if __name__ == "__main__":
             np.save(os.path.join(model_pred_dir, file_name), model_pred_np)
 
         print("Get predict result done.")
-
+    # todo:这里之下还有不少问题
     if miou_mode == 0 or miou_mode == 2:
         print("Get miou for baseline model.")
         baseline_hist, baseline_IoUs, baseline_PA_Recall, baseline_Precision = compute_mIoU_npy(
@@ -141,28 +159,33 @@ if __name__ == "__main__":
         my_hist, my_IoUs, my_PA_Recall, my_Precision = compute_mIoU_npy(
             gt_npy_dir, model_pred_dir, image_ids, num_classes, name_classes)
 
-        # Store metrics in dictionary
-        metrics_dict = {
-            'UNet_Class1_IoU': float(baseline_IoUs[1]),  # Skip background class
-            'UNet_Class2_IoU': float(baseline_IoUs[2]),
-            'UNet_Class3_IoU': float(baseline_IoUs[3]),
-            'UNet_mIoU': float(np.nanmean(baseline_IoUs[1:])),  # Calculate mIoU excluding background
-            'UNet_FPS': float(baseline_fps),
-            'UNet_Parameters': int(baseline_params),
-            'MyModel_Class1_IoU': float(my_IoUs[1]),  # Skip background class
-            'MyModel_Class2_IoU': float(my_IoUs[2]),
-            'MyModel_Class3_IoU': float(my_IoUs[3]),
-            'MyModel_mIoU': float(np.nanmean(my_IoUs[1:])),  # Calculate mIoU excluding background
-            'MyModel_FPS': float(my_model_fps),
-            'MyModel_Parameters': int(my_model_params)
-        }
+        if baseline_hist is None or my_hist is None:
+            print("Error: Unable to compute metrics due to processing failures.")
+        else:
+            # Store metrics in dictionary
+            metrics_dict = {
+                'UNet_Class1_IoU': float(baseline_IoUs[1]),  # Skip background class
+                'UNet_Class2_IoU': float(baseline_IoUs[2]),
+                'UNet_Class3_IoU': float(baseline_IoUs[3]),
+                'UNet_mIoU': float(np.nanmean(baseline_IoUs[1:])),  # Calculate mIoU excluding background
+                'UNet_FPS': float(baseline_fps),
+                'UNet_Parameters': int(baseline_params),
+                'MyModel_Class1_IoU': float(my_IoUs[1]),  # Skip background class
+                'MyModel_Class2_IoU': float(my_IoUs[2]),
+                'MyModel_Class3_IoU': float(my_IoUs[3]),
+                'MyModel_mIoU': float(np.nanmean(my_IoUs[1:])),  # Calculate mIoU excluding background
+                'MyModel_FPS': float(my_model_fps),
+                'MyModel_Parameters': int(my_model_params)
+            }
 
-        # Save metrics to txt file
-        metrics_txt_path = os.path.join(miou_out_path, 'metrics.txt')
-        save_metrics_to_txt(metrics_dict, metrics_txt_path)
+            # Save metrics to txt file
+            metrics_txt_path = os.path.join(miou_out_path, '关键指标数据文档.txt')
+            print("关键指标数据文档.txt输出完成")
+            save_metrics_to_txt(metrics_dict, metrics_txt_path)
 
-        # Show results for both models
-        print("Baseline UNet Results:")
-        show_results(miou_out_path, baseline_hist, baseline_IoUs, baseline_PA_Recall, baseline_Precision, name_classes)
-        print("\nMy Model Results:")
-        show_results(miou_out_path, my_hist, my_IoUs, my_PA_Recall, my_Precision, name_classes)
+            # Show results for both models
+            print("Baseline UNet Results:")
+            show_results(miou_out_path, baseline_hist, baseline_IoUs, baseline_PA_Recall, baseline_Precision,
+                         name_classes)
+            print("\nMy Model Results:")
+            show_results(miou_out_path, my_hist, my_IoUs, my_PA_Recall, my_Precision, name_classes)

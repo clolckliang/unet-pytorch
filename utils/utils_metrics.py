@@ -138,27 +138,26 @@ def compute_mIoU_npy(gt_dir, pred_dir, image_ids, num_classes, name_classes=None
     processed_images = 0
     skipped_images = 0
 
-    for image_id in image_ids:
-        gt_path = join(gt_dir, f"ground_truth_{image_id}.npy")
-        pred_path = join(pred_dir, f"prediction_{image_id}.npy")
+    for index, image_id in enumerate(image_ids, start=1):
+        gt_file_name = f"ground_truth_{index:06d}.npy"
+        file_name = f"prediction_{index:06d}.npy"
 
-        # 检查地面真值文件
+        gt_path = join(gt_dir, gt_file_name)
+        pred_path = join(pred_dir, file_name)
+
+        print(f"Processing image {image_id} (index: {index})")
+        print(f"Ground truth path: {gt_path}")
+        print(f"Prediction path: {pred_path}")
+
         if not os.path.exists(gt_path):
-            print(f"Warning: Ground truth file not found for {image_id}. Trying without 'ground_truth_' prefix...")
-            gt_path = join(gt_dir, f"{image_id}.npy")
-            if not os.path.exists(gt_path):
-                print(f"Error: Could not find ground truth file for {image_id}. Skipping...")
-                skipped_images += 1
-                continue
+            print(f"Warning: Ground truth file not found for {image_id}.")
+            skipped_images += 1
+            continue
 
-        # 检查预测文件
         if not os.path.exists(pred_path):
-            print(f"Warning: Prediction file not found for {image_id}. Trying without 'prediction_' prefix...")
-            pred_path = join(pred_dir, f"{image_id}.npy")
-            if not os.path.exists(pred_path):
-                print(f"Error: Could not find prediction file for {image_id}. Skipping...")
-                skipped_images += 1
-                continue
+            print(f"Warning: Prediction file not found for {image_id}.")
+            skipped_images += 1
+            continue
 
         try:
             pred = np.load(pred_path)
@@ -202,9 +201,6 @@ def compute_mIoU_npy(gt_dir, pred_dir, image_ids, num_classes, name_classes=None
 
     print(f'===> mIoU: {mIoU:.4f}; mPA: {mPA:.4f}; mPrecision: {mPrecision:.4f}; Accuracy: {Accuracy:.4f}')
     return np.array(hist, np.int32), IoUs, PA_Recall, Precision
-
-
-
 
 
 

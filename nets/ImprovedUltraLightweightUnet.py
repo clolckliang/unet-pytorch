@@ -51,12 +51,13 @@ class LightConvBlock(nn.Module):
         x = self.se(x)
         return x
 
+
 class FeatureFusion(nn.Module):
     def __init__(self, in_channels):
         super(FeatureFusion, self).__init__()
         self.conv1x1 = nn.Conv2d(in_channels * 2, in_channels, kernel_size=1)
         self.se = LightSEBlock(in_channels)
-        
+
     def forward(self, x1, x2):
         x = torch.cat([x1, x2], dim=1)
         x = self.conv1x1(x)
@@ -136,5 +137,5 @@ class ImprovedUltraLightweightUnet(nn.Module):
             aux3 = F.interpolate(self.aux_out3(dec3), size=x.shape[2:], mode='bilinear', align_corners=True)
             aux2 = F.interpolate(self.aux_out2(dec2), size=x.shape[2:], mode='bilinear', align_corners=True)
             return final, aux4, aux3, aux2
-        
+
         return final
