@@ -236,7 +236,10 @@ def draw_plot_func(values, name_classes, plot_title, x_label, output_path, tick_
     plt.close()
 
 def show_results(miou_out_path, hist, IoUs, PA_Recall, Precision, name_classes, tick_font_size = 12):
-    draw_plot_func(IoUs, name_classes, "mIoU = {0:.2f}%".format(np.nanmean(IoUs)*100), "Intersection over Union", \
+    # draw_plot_func(IoUs, name_classes, "mIoU = {0:.2f}%".format(np.nanmean(IoUs)*100), "Intersection over Union", \
+    #     os.path.join(miou_out_path, "mIoU.png"), tick_font_size = tick_font_size, plt_show = True)
+    draw_plot_func(IoUs, name_classes, "mIoU = {0:.2f}%".format(np.nanmean([IoUs[1], IoUs[2], IoUs[3]]) * 100),
+                   "Intersection over Union", \
         os.path.join(miou_out_path, "mIoU.png"), tick_font_size = tick_font_size, plt_show = True)
     print("Save mIoU out to " + os.path.join(miou_out_path, "mIoU.png"))
 

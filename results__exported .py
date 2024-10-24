@@ -7,7 +7,7 @@ import torch
 # baseline_model
 from unet import Unet as baseline_model
 # myselfs' model
-from UltraLightweightUnet_config import Unet as UltraLightweightUnet
+from UltraLightweightUnet_large_optimized_config import Unet as UltraLightweightUnet
 from utils.utils_metrics import compute_mIoU, show_results, compute_mIoU_npy
 
 def get_model_info():
@@ -15,8 +15,8 @@ def get_model_info():
 
     # Import model definitions
     from nets.unet import Unet  # 确保你根据实际情况修改这个路径
-    from nets.UltraLightweightUnet import UltraLightweightUnet
-
+    # from nets.UltraLightweightUnet_large_optimized import UltraLightweightUnet_large_optimized
+    from Submit_result.model import self_net as UltraLightweightUnet_large_optimized
     # 基准模型参数
     num_classes = 4
     pretrained = False
@@ -24,7 +24,7 @@ def get_model_info():
 
     # 实例化基准模型
     baseline_model = Unet(num_classes=num_classes, pretrained=pretrained, backbone=backbone)
-    baseline_model_path = "model_data/result_model/best_unet_baseline.pth"
+    baseline_model_path = "model_data/result_model/stander_baseline_weights.pth"
     baseline_model.load_state_dict(
         torch.load(baseline_model_path, map_location='cpu', weights_only=True))  # 使用weights_only=True
 
@@ -32,7 +32,7 @@ def get_model_info():
     baseline_params = sum(p.numel() for p in baseline_model.parameters())
 
     # 自定义模型参数
-    my_model = UltraLightweightUnet(num_classes=num_classes)
+    my_model = UltraLightweightUnet_large_optimized(num_classes=num_classes)
     my_model_path = "Submit_result/model.pth"  # 根据实际路径修改
     my_model.load_state_dict(torch.load(my_model_path, map_location='cpu', weights_only=True))  # 使用weights_only=True
 
@@ -83,8 +83,8 @@ if __name__ == "__main__":
     name_classes = ["Background", "Inclusions", "Patches", "Scratches"]
     VOCdevkit_path = 'VOCdevkit'
 
-    image_ids = open(os.path.join(VOCdevkit_path, "VOC2007/ImageSets/Segmentation/val.txt"), 'r').read().splitlines()
-    gt_dir = os.path.join(VOCdevkit_path, "VOC2007/SegmentationClass/")
+    image_ids = open(os.path.join(VOCdevkit_path, "VOC2012/ImageSets/Segmentation/test.txt"), 'r').read().splitlines()
+    gt_dir = os.path.join(VOCdevkit_path, "VOC2012/SegmentationClass/")
     miou_out_path = "Submit_result"
     pred_dir = os.path.join(miou_out_path, 'detection-results')
 
@@ -119,7 +119,7 @@ if __name__ == "__main__":
 
         # Calculate FPS using the first image
         print("Calculating FPS...")
-        first_image_path = os.path.join(VOCdevkit_path, "VOC2007/JPEGImages/" + image_ids[0] + ".jpg")
+        first_image_path = os.path.join(VOCdevkit_path, "VOC2012/JPEGImages/" + image_ids[0] + ".jpg")
         first_image = Image.open(first_image_path)
         baseline_fps = calculate_fps(baseline_unet, first_image)
         my_model_fps = calculate_fps(my_unet, first_image)
@@ -131,7 +131,7 @@ if __name__ == "__main__":
             file_name = f"prediction_{index:06d}.npy"
             gt_file_name = f"ground_truth_{index:06d}.npy"
 
-            image_path = os.path.join(VOCdevkit_path, "VOC2007/JPEGImages/" + image_id + ".jpg")
+            image_path = os.path.join(VOCdevkit_path, "VOC2012/JPEGImages/" + image_id + ".jpg")
             image = Image.open(image_path)
 
             # Get predictions and save
@@ -189,3 +189,5 @@ if __name__ == "__main__":
                          name_classes)
             print("\nMy Model Results:")
             show_results(miou_out_path, my_hist, my_IoUs, my_PA_Recall, my_Precision, name_classes)
+
+            import output

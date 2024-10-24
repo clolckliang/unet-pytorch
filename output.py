@@ -17,7 +17,7 @@ files_to_compress = [
 current_dir = 'Submit_result'  # Change this to your actual path
 
 # Define the output 7z file path
-output_7z_path = 'Submit_result/薛之谦谦子_20241022.7z'  # Change this to your desired output path
+output_7z_path = 'Submit_result/薛之谦谦子_20241023.7z'  # Change this to your desired output path
 
 # Create a 7z archive including all contents of the specified folders and files
 with py7zr.SevenZipFile(output_7z_path, 'w') as archive:

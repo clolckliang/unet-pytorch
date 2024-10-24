@@ -184,7 +184,8 @@ class EvalCallback():
                         
             print("Calculate miou.")
             _, IoUs, _, _ = compute_mIoU(gt_dir, pred_dir, self.image_ids, self.num_classes, None)  # 执行计算mIoU的函数
-            temp_miou = np.nanmean(IoUs) * 100
+            # temp_miou = np.nanmean(IoUs) * 100
+            temp_miou = np.nanmean([IoUs[1], IoUs[2], IoUs[3]]) * 100
 
             self.mious.append(temp_miou)
             self.epoches.append(epoch)

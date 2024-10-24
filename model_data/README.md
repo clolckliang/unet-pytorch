@@ -1,1 +1,2 @@
 这里面存放的是已经训练好的权重，可通过百度网盘下载。
+[best_UltraLightweightUnet large optimized_newest.pth](result_model/best_UltraLightweightUnet%20large%20optimized_newest.pth)是最新版
