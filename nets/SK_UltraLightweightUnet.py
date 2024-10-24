@@ -82,9 +82,9 @@ class LightSKBlock(nn.Module):
         x = self.bn(x)
         return self.relu(x)
 
-class ModifiedSelfNet(nn.Module):
+class SK_UltraLightweightUnet(nn.Module):
     def __init__(self, num_classes=21):
-        super(ModifiedSelfNet, self).__init__()
+        super(SK_UltraLightweightUnet, self).__init__()
 
         # Encoder - 使用SK blocks替换原来的LightConvBlock
         self.enc1 = LightSKBlock(3, 44)
