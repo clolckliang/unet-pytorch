@@ -5,7 +5,8 @@ from tqdm import tqdm
 import time
 import torch
 # baseline_model
-from unet import Unet as baseline_model
+# from unet import Unet as baseline_model
+from TraditionalUnet_config import Unet as baseline_model
 # myselfs' model
 from UltraLightweightUnet_large_optimized_config import Unet as UltraLightweightUnet
 from utils.utils_metrics import compute_mIoU, show_results, compute_mIoU_npy
@@ -15,6 +16,7 @@ def get_model_info():
 
     # Import model definitions
     from nets.unet import Unet  # 确保你根据实际情况修改这个路径
+    from nets.TraditionalUnet import TraditionalUnet ,count_parameters
     # from nets.UltraLightweightUnet_large_optimized import UltraLightweightUnet_large_optimized
     from Submit_result.model import self_net as UltraLightweightUnet_large_optimized
     # 基准模型参数
@@ -23,14 +25,14 @@ def get_model_info():
     backbone = "vgg"  # 这里的backbone可以根据需要修改
 
     # 实例化基准模型
-    baseline_model = Unet(num_classes=num_classes, pretrained=pretrained, backbone=backbone)
-    baseline_model_path = "model_data/result_model/stander_baseline_weights.pth"
-    baseline_model.load_state_dict(
-        torch.load(baseline_model_path, map_location='cpu', weights_only=True))  # 使用weights_only=True
+    baseline_model = TraditionalUnet(in_channels=3, num_classes=21)
+    # baseline_model_path = "model_data/final_baseline.pth"
+    # baseline_model.load_state_dict(
+    #     torch.load(baseline_model_path, map_location='cpu', weights_only=True))  # 使用weights_only=True
 
     # 计算基准模型参数数量
-    baseline_params = sum(p.numel() for p in baseline_model.parameters())
-
+    # baseline_params = sum(p.numel() for p in baseline_model.parameters())
+    baseline_params = count_parameters(baseline_model)
     # 自定义模型参数
     my_model = UltraLightweightUnet_large_optimized(num_classes=num_classes)
     my_model_path = "Submit_result/model.pth"  # 根据实际路径修改

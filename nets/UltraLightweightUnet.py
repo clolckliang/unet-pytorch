@@ -105,3 +105,23 @@ class UltraLightweightUnet(nn.Module):
         # Final output
         final = self.final(dec1)
         return F.interpolate(final, size=x.shape[2:], mode='bilinear', align_corners=True)
+
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+if __name__ == "__main__":
+    # 创建并比较不同版本的模型参数量
+    ultra_light_model = UltraLightweightUnet(num_classes=21)
+    ultra_light_params = count_parameters(ultra_light_model)
+    print(f"Ultra Lightweight U-Net parameters: {ultra_light_params:,}")
+
+    # 计算输入尺寸为224x224的模型计算量
+    input_tensor = torch.randn(1, 3, 224, 224)
+    ultra_light_model.eval()  # 设置为评估模式
+    with torch.no_grad():
+        output = ultra_light_model(input_tensor)
+        output_size = output.size()
+    print(f"Input size: (3, 224, 224)")
+    print(f"Output size: {tuple(output_size[1:])}")
