@@ -3,6 +3,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 from  unet import Unet
+from TraditionalUnet_config import Unet
 # from UltraLightweightUnet_large_optimized_config import Unet
 #from LightweightUnet_config import Unet
 from utils.utils_metrics import compute_mIoU, show_results

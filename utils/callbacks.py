@@ -159,53 +159,125 @@ class EvalCallback():
     
         image = Image.fromarray(np.uint8(pr))
         return image
-    
+
+
     def on_epoch_end(self, epoch, model_eval):
         if epoch % self.period == 0 and self.eval_flag:
-            self.net    = model_eval
-            gt_dir      = os.path.join(self.dataset_path, "VOC2012/SegmentationClass/")
-            pred_dir    = os.path.join(self.miou_out_path, 'detection-results')
+            self.net = model_eval
+            gt_dir = os.path.join(self.dataset_path, "VOC2012/SegmentationClass/")
+            pred_dir = os.path.join(self.miou_out_path, 'detection-results')
             if not os.path.exists(self.miou_out_path):
                 os.makedirs(self.miou_out_path)
             if not os.path.exists(pred_dir):
                 os.makedirs(pred_dir)
             print("Get miou.")
             for image_id in tqdm(self.image_ids):
-                #-------------------------------#
-                #   从文件中读取图像
-                #-------------------------------#
-                image_path  = os.path.join(self.dataset_path, "VOC2012/JPEGImages/"+image_id+".jpg")
-                image       = Image.open(image_path)
-                #------------------------------#
-                #   获得预测txt
-                #------------------------------#
-                image       = self.get_miou_png(image)
+                image_path = os.path.join(self.dataset_path, "VOC2012/JPEGImages/" + image_id + ".jpg")
+                image = Image.open(image_path)
+                image = self.get_miou_png(image)
                 image.save(os.path.join(pred_dir, image_id + ".png"))
-                        
+
             print("Calculate miou.")
-            _, IoUs, _, _ = compute_mIoU(gt_dir, pred_dir, self.image_ids, self.num_classes, None)  # 执行计算mIoU的函数
-            # temp_miou = np.nanmean(IoUs) * 100
-            temp_miou = np.nanmean([IoUs[1], IoUs[2], IoUs[3]]) * 100
+            _, IoUs, _, _ = compute_mIoU(gt_dir, pred_dir, self.image_ids, self.num_classes, None)
 
-            self.mious.append(temp_miou)
-            self.epoches.append(epoch)
+            # 初始化所需的列表（只在第一次调用时进行）
+            if not hasattr(self, 'class_ious'):
+                self.class_ious = {}
+                for i in range(1, self.num_classes):
+                    self.class_ious[i] = []
+            if not hasattr(self, 'epoches'):
+                self.epoches = []
+            if not hasattr(self, 'mious'):
+                self.mious = []
 
+            # 当前epoch
+            curr_epoch = epoch + 1
+
+            # 如果是第一个epoch，需要特殊处理
+            if len(self.epoches) == 0:
+                self.epoches = [curr_epoch]
+                self.mious = []
+                for i in range(1, self.num_classes):
+                    self.class_ious[i] = []
+            elif curr_epoch not in self.epoches:
+                self.epoches.append(curr_epoch)
+
+            # 存储IoU值
+            temp_ious = []
+            for class_id in range(1, self.num_classes):
+                iou = IoUs[class_id] * 100
+                temp_ious.append(iou)
+
+                # 确保class_ious[class_id]的长度与epoches相同
+                while len(self.class_ious[class_id]) < len(self.epoches) - 1:
+                    self.class_ious[class_id].append(0)  # 使用0代替None
+                self.class_ious[class_id].append(iou)
+
+            # 计算并存储平均mIoU
+            temp_miou = np.mean(temp_ious)
+            if len(self.mious) < len(self.epoches):
+                self.mious.append(temp_miou)
+
+            # 保存到文件
             with open(os.path.join(self.log_dir, "epoch_miou.txt"), 'a') as f:
-                f.write(str(temp_miou))
+                f.write(f"Epoch {curr_epoch}: mean_mIoU={temp_miou:.2f}\n")
+                for class_id in range(1, self.num_classes):
+                    f.write(f"class{class_id}={IoUs[class_id] * 100:.2f}, ")
                 f.write("\n")
-            
-            plt.figure()
-            plt.plot(self.epoches, self.mious, 'red', linewidth = 2, label='train miou')
 
-            plt.grid(True)
-            plt.xlabel('Epoch')
-            plt.ylabel('Miou')
-            plt.title('A Miou Curve')
-            plt.legend(loc="upper right")
+            # 确保所有数据长度一致
+            for class_id in range(1, self.num_classes):
+                while len(self.class_ious[class_id]) < len(self.epoches):
+                    self.class_ious[class_id].append(0)  # 使用0代替None
 
-            plt.savefig(os.path.join(self.log_dir, "epoch_miou.png"))
-            plt.cla()
-            plt.close("all")
+            # 绘图
+            try:
+                colors = plt.cm.rainbow(np.linspace(0, 1, self.num_classes - 1))
+                plt.figure(figsize=(12, 8))
+
+                # 打印调试信息
+                print(f"Debug - Epochs: {self.epoches}")
+                for class_id in range(1, self.num_classes):
+                    print(f"Debug - Class {class_id} IoUs: {self.class_ious[class_id]}")
+                print(f"Debug - Mean IoUs: {self.mious}")
+
+                # 绘制每个类别的IoU曲线
+                for class_id in range(1, self.num_classes):
+                    plt.plot(self.epoches, self.class_ious[class_id],
+                             color=colors[class_id - 1],
+                             linewidth=2,
+                             label=f'Class {class_id} IoU')
+
+                # 绘制平均IoU曲线
+                plt.plot(self.epoches, self.mious,
+                         color='black',
+                         linewidth=2,
+                         linestyle='--',
+                         label='Mean IoU')
+
+                plt.grid(True)
+                plt.xlabel('Epoch')
+                plt.ylabel('IoU (%)')
+                plt.title(f'IoU Curves for {self.num_classes - 1} Classes')
+
+                # 调整图例
+                if self.num_classes > 10:
+                    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+                else:
+                    plt.legend(loc="upper right")
+
+                plt.tight_layout()
+                plt.savefig(os.path.join(self.log_dir, "epoch_miou.png"),
+                            bbox_inches='tight',
+                            dpi=300)
+                plt.cla()
+                plt.close("all")
+
+            except Exception as e:
+                print(f"Warning: Error while plotting: {str(e)}")
+                print(f"Current data lengths - Epochs: {len(self.epoches)}, mIoUs: {len(self.mious)}")
+                for class_id in range(1, self.num_classes):
+                    print(f"Class {class_id} IoUs: {len(self.class_ious[class_id])}")
 
             print("Get miou done.")
             shutil.rmtree(self.miou_out_path)
