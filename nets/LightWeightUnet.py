@@ -183,3 +183,14 @@ class LightweightUnet(nn.Module):
     def unfreeze_backbone(self):
         for param in self.backbone.parameters():
             param.requires_grad = True
+
+
+
+# Calculate model parameters
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+if __name__ == "__main__":
+    model = LightweightUnet(num_classes=21)
+    num_params = count_parameters(model)
+    print(f"Number of parameters: {num_params:,}")
