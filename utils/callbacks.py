@@ -3,6 +3,7 @@ import os
 import matplotlib
 import torch
 import torch.nn.functional as F
+import wandb
 
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
@@ -160,7 +161,6 @@ class EvalCallback():
         image = Image.fromarray(np.uint8(pr))
         return image
 
-
     def on_epoch_end(self, epoch, model_eval):
         if epoch % self.period == 0 and self.eval_flag:
             self.net = model_eval
@@ -202,21 +202,29 @@ class EvalCallback():
             elif curr_epoch not in self.epoches:
                 self.epoches.append(curr_epoch)
 
-            # 存储IoU值
+            # 存储IoU值并记录到wandb
             temp_ious = []
+            wandb_data = {}  # 用于存储要记录到wandb的数据
+
             for class_id in range(1, self.num_classes):
                 iou = IoUs[class_id] * 100
                 temp_ious.append(iou)
 
                 # 确保class_ious[class_id]的长度与epoches相同
                 while len(self.class_ious[class_id]) < len(self.epoches) - 1:
-                    self.class_ious[class_id].append(0)  # 使用0代替None
+                    self.class_ious[class_id].append(0)
                 self.class_ious[class_id].append(iou)
+
+                # 添加到wandb数据
+                wandb_data[f'metrics/class_{class_id}_iou'] = iou
 
             # 计算并存储平均mIoU
             temp_miou = np.mean(temp_ious)
             if len(self.mious) < len(self.epoches):
                 self.mious.append(temp_miou)
+
+            # 添加平均mIoU到wandb数据
+            wandb_data['metrics/mean_iou'] = temp_miou
 
             # 保存到文件
             with open(os.path.join(self.log_dir, "epoch_miou.txt"), 'a') as f:
@@ -228,18 +236,12 @@ class EvalCallback():
             # 确保所有数据长度一致
             for class_id in range(1, self.num_classes):
                 while len(self.class_ious[class_id]) < len(self.epoches):
-                    self.class_ious[class_id].append(0)  # 使用0代替None
+                    self.class_ious[class_id].append(0)
 
             # 绘图
             try:
                 colors = plt.cm.rainbow(np.linspace(0, 1, self.num_classes - 1))
                 plt.figure(figsize=(12, 8))
-
-                # 打印调试信息
-                print(f"Debug - Epochs: {self.epoches}")
-                for class_id in range(1, self.num_classes):
-                    print(f"Debug - Class {class_id} IoUs: {self.class_ious[class_id]}")
-                print(f"Debug - Mean IoUs: {self.mious}")
 
                 # 绘制每个类别的IoU曲线
                 for class_id in range(1, self.num_classes):
@@ -267,9 +269,27 @@ class EvalCallback():
                     plt.legend(loc="upper right")
 
                 plt.tight_layout()
-                plt.savefig(os.path.join(self.log_dir, "epoch_miou.png"),
-                            bbox_inches='tight',
-                            dpi=300)
+
+                # 保存图片
+                plot_path = os.path.join(self.log_dir, "epoch_miou.png")
+                plt.savefig(plot_path, bbox_inches='tight', dpi=300)
+
+                # 如果启用了wandb，记录图表
+                if hasattr(self, 'use_wandb') and self.use_wandb:
+                    # 创建wandb的图表对象
+                    iou_plot = wandb.Image(plot_path, caption=f"IoU Curves - Epoch {curr_epoch}")
+                    wandb_data['visualizations/iou_curves'] = iou_plot
+
+                    # 创建wandb的折线图
+                    wandb_data['charts/iou_curves'] = {
+                        'epoch': curr_epoch,
+                        'mean_iou': temp_miou,
+                        **{f'class_{i}_iou': self.class_ious[i][-1] for i in range(1, self.num_classes)}
+                    }
+
+                    # 记录所有数据到wandb
+                    wandb.log(wandb_data)
+
                 plt.cla()
                 plt.close("all")
 
