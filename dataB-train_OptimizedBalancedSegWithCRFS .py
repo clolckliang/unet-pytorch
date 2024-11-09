@@ -11,10 +11,10 @@ from torch.utils.data import DataLoader
 import wandb
 
 
-from nets.SegNets import HybridEfficientSeg,OptimizedBalancedSegWithFPN
+from nets.SegNets import HybridEfficientSeg,OptimizedBalancedSegWithCRFS
 from nets.HybridEfficientSeg import HybridEfficientSeg
 from nets.unet_training import get_lr_scheduler, set_optimizer_lr, weights_init
-from utils.callbacks import EvalCallback, LossHistory, EarlyStopping
+from utils.callbacks import EvalCallback, LossHistory,EarlyStopping
 from utils.dataloader import UltraLightweightUnetDataset, unet_dataset_collate,UnetDataset
 from utils.dataloader_defect import SteelDefectDataset
 from utils.utils import (download_weights, seed_everything, show_config,
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     wandb_config = {
         "project": "segmentation_dataB",  # 项目名称
         "entity": None,  # 你的wandb用户名
-        "name": "OptimizedBalancedSegWithFPN_V2",  # 实验名称
+        "name": "OptimizedBalancedSegWithCRFS_V1",  # 实验名称
     }
     
     # ---------------------------------#
@@ -55,15 +55,15 @@ if __name__ == "__main__":
     Init_Epoch = 0
     Freeze_Epoch = 100
     Freeze_batch_size = 16
-    UnFreeze_Epoch = 1000
-    Unfreeze_batch_size =96
+    UnFreeze_Epoch = 400
+    Unfreeze_batch_size = 16
     Freeze_Train = False
-    
+
     # ---------------------------------#
     #   优化器配置
     # ---------------------------------#
     Init_lr = 1e-2
-    Min_lr = Init_lr * 0.001
+    Min_lr = Init_lr * 0.01
     optimizer_type = "adam"
     momentum = 0.9
     weight_decay = 1e-4
@@ -79,13 +79,12 @@ if __name__ == "__main__":
     # ---------------------------------------#
     #   初始化 EarlyStopping
     # ---------------------------------------#
-    patience = 100  # 根据需要调整耐心值
+    patience = 10  # 根据需要调整耐心值
     early_stopping = EarlyStopping(
-        patience,
+        patience=patience,
         verbose=True,
-        delta=0.001,
-        save_path='checkpoints/best_model.pth',
-        mode='min'
+        delta=0.0,
+        save_path=os.path.join(save_dir, 'best_model_early_stopping.pth')
     )
     # ---------------------------------#
     #   数据集配置
@@ -141,7 +140,7 @@ if __name__ == "__main__":
         local_rank = 0
         rank = 0
 
-    model = OptimizedBalancedSegWithFPN(num_classes=num_classes).train()
+    model = OptimizedBalancedSegWithCRFS(num_classes=num_classes).train()
     if not pretrained:
         weights_init(model)
     if model_path != '':
@@ -203,7 +202,7 @@ if __name__ == "__main__":
     # ---------------------------#
     with open(os.path.join(VOCdevkit_path, "DataB/ImageSets/Segmentation/trainval.txt"), "r") as f:
         train_lines = f.readlines()
-    with open(os.path.join(VOCdevkit_path, "DataB/ImageSets/Segmentation/trainval.txt"), "r") as f:
+    with open(os.path.join(VOCdevkit_path, "DataB/ImageSets/Segmentation/train.txt"), "r") as f:
         val_lines = f.readlines()
     num_train = len(train_lines)
     num_val = len(val_lines)
@@ -361,18 +360,19 @@ if __name__ == "__main__":
                                     gen_val, UnFreeze_Epoch, Cuda, dice_loss, focal_loss, cls_weights, num_classes, fp16, scaler,
                                     save_period,
                                     save_dir, use_wandb=True, local_rank=0)
+
             if loss_history and loss_history.val_loss:
                 current_val_loss = loss_history.val_loss[-1]
                 # 调用 EarlyStopping
-                if early_stopping(current_val_loss, model, use_wandb=True, epoch=epoch):
-                    print("Early stopping triggered")
+                early_stopping(current_val_loss, model)
+                if early_stopping.early_stop:
+                    print(f"早停触发于 epoch {epoch + 1}")
                     break
             else:
                 print("警告：无法获取当前 epoch 的验证损失，跳过早停检查。")
 
             if distributed:
                 dist.barrier()
-        early_stopping.load_best_model(model)
 
     if local_rank == 0:
         wandb.finish()  # 结束wandb记录

@@ -7,19 +7,28 @@ import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 import torch.optim as optim
+from torch import nn
 from torch.utils.data import DataLoader
 import wandb
 
 
-from nets.SegNets import HybridEfficientSeg,OptimizedBalancedSegWithFPN
+from nets.SegNets import HybridEfficientSeg,OptimizedBalancedSegWithFPN_Supervision
 from nets.HybridEfficientSeg import HybridEfficientSeg
 from nets.unet_training import get_lr_scheduler, set_optimizer_lr, weights_init
-from utils.callbacks import EvalCallback, LossHistory, EarlyStopping
+from utils.callbacks import EvalCallback, LossHistory
 from utils.dataloader import UltraLightweightUnetDataset, unet_dataset_collate,UnetDataset
 from utils.dataloader_defect import SteelDefectDataset
 from utils.utils import (download_weights, seed_everything, show_config,
                          worker_init_fn)
-from utils.utils_fit import fit_one_epoch, fit_one_epoch_use_wandb
+from utils.utils_fit import fit_one_epoch, fit_one_epoch_use_wandb,fit_one_epoch_use_wandb_Supervision
+
+
+def initialize_weights(m):
+    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+        nn.init.kaiming_normal_(m.weight)
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
+
 
 if __name__ == "__main__":
     # ---------------------------------#
@@ -28,7 +37,7 @@ if __name__ == "__main__":
     wandb_config = {
         "project": "segmentation_dataB",  # 项目名称
         "entity": None,  # 你的wandb用户名
-        "name": "OptimizedBalancedSegWithFPN_V2",  # 实验名称
+        "name": "OptimizedBalancedSegWithFPN_Supervision_V1",  # 实验名称
     }
     
     # ---------------------------------#
@@ -55,15 +64,15 @@ if __name__ == "__main__":
     Init_Epoch = 0
     Freeze_Epoch = 100
     Freeze_batch_size = 16
-    UnFreeze_Epoch = 1000
-    Unfreeze_batch_size =96
+    UnFreeze_Epoch = 400
+    Unfreeze_batch_size = 16
     Freeze_Train = False
     
     # ---------------------------------#
     #   优化器配置
     # ---------------------------------#
     Init_lr = 1e-2
-    Min_lr = Init_lr * 0.001
+    Min_lr = Init_lr * 0.01
     optimizer_type = "adam"
     momentum = 0.9
     weight_decay = 1e-4
@@ -76,23 +85,13 @@ if __name__ == "__main__":
     save_dir = 'logs'
     eval_flag = True
     eval_period = 5
-    # ---------------------------------------#
-    #   初始化 EarlyStopping
-    # ---------------------------------------#
-    patience = 100  # 根据需要调整耐心值
-    early_stopping = EarlyStopping(
-        patience,
-        verbose=True,
-        delta=0.001,
-        save_path='checkpoints/best_model.pth',
-        mode='min'
-    )
+    
     # ---------------------------------#
     #   数据集配置
     # ---------------------------------#
     VOCdevkit_path = 'VOCdevkit'
-    dice_loss = True
-    focal_loss = True
+    dice_loss = False
+    focal_loss = False
     cls_weights = np.array([1, 1, 1, 1], np.float32)
     num_workers = 4
 
@@ -141,7 +140,7 @@ if __name__ == "__main__":
         local_rank = 0
         rank = 0
 
-    model = OptimizedBalancedSegWithFPN(num_classes=num_classes).train()
+    model = OptimizedBalancedSegWithFPN_Supervision(num_classes=num_classes).train()
     if not pretrained:
         weights_init(model)
     if model_path != '':
@@ -159,6 +158,7 @@ if __name__ == "__main__":
                 no_load_key.append(k)
         model_dict.update(temp_dict)
         model.load_state_dict(model_dict)
+        model.apply(initialize_weights)
         
         if local_rank == 0:
             print("\nSuccessful Load Key:", str(load_key)[:500], "……\nSuccessful Load Key Num:", len(load_key))
@@ -203,7 +203,7 @@ if __name__ == "__main__":
     # ---------------------------#
     with open(os.path.join(VOCdevkit_path, "DataB/ImageSets/Segmentation/trainval.txt"), "r") as f:
         train_lines = f.readlines()
-    with open(os.path.join(VOCdevkit_path, "DataB/ImageSets/Segmentation/trainval.txt"), "r") as f:
+    with open(os.path.join(VOCdevkit_path, "DataB/ImageSets/Segmentation/train.txt"), "r") as f:
         val_lines = f.readlines()
     num_train = len(train_lines)
     num_val = len(val_lines)
@@ -356,23 +356,14 @@ if __name__ == "__main__":
 
 
 
-            fit_one_epoch_use_wandb(model_train, model, loss_history, eval_callback, optimizer, epoch, epoch_step,
+            fit_one_epoch_use_wandb_Supervision(model_train, model, loss_history, eval_callback, optimizer, epoch, epoch_step,
                                     epoch_step_val, gen,
                                     gen_val, UnFreeze_Epoch, Cuda, dice_loss, focal_loss, cls_weights, num_classes, fp16, scaler,
                                     save_period,
                                     save_dir, use_wandb=True, local_rank=0)
-            if loss_history and loss_history.val_loss:
-                current_val_loss = loss_history.val_loss[-1]
-                # 调用 EarlyStopping
-                if early_stopping(current_val_loss, model, use_wandb=True, epoch=epoch):
-                    print("Early stopping triggered")
-                    break
-            else:
-                print("警告：无法获取当前 epoch 的验证损失，跳过早停检查。")
 
             if distributed:
                 dist.barrier()
-        early_stopping.load_best_model(model)
 
     if local_rank == 0:
         wandb.finish()  # 结束wandb记录

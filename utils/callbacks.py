@@ -19,6 +19,158 @@ from torch.utils.tensorboard import SummaryWriter
 from .utils import cvtColor, preprocess_input, resize_image
 from .utils_metrics import compute_mIoU
 
+from typing import Optional, Union, Dict, Callable
+
+import torch
+import os
+import warnings
+from pathlib import Path
+
+
+class EarlyStopping:
+    """Early stops the training if validation loss doesn't improve after a given patience."""
+
+    def __init__(
+            self,
+            patience: int = 10,
+            verbose: bool = False,
+            delta: float = 0,
+            save_path: str = 'best_model.pth',
+            mode: str = 'min',
+            trace_func: Callable = print
+    ):
+        """
+        Args:
+            patience (int): How long to wait after last time validation loss improved.
+            verbose (bool): If True, prints a message for each validation loss improvement.
+            delta (float): Minimum change in the monitored quantity to qualify as an improvement.
+            save_path (str): Path to save the best model.
+            mode (str): 'min' for minimize metric, 'max' for maximize metric.
+            trace_func (callable): Function for logging/printing information.
+        """
+        self.patience = patience
+        self.verbose = verbose
+        self.delta = delta
+        self.save_path = Path(save_path)  # 使用 Path 对象处理路径
+        self.mode = mode
+        self.trace_func = trace_func
+
+        # Validate mode
+        if mode not in ['min', 'max']:
+            raise ValueError(f"mode '{mode}' is not supported. Use 'min' or 'max'")
+
+        # Create directory for save_path if it doesn't exist
+        self.save_path.parent.mkdir(parents=True, exist_ok=True)
+
+        self.counter = 0
+        self.best_score: Optional[float] = None
+        self.early_stop = False
+        self.val_loss_min = np.Inf
+        self.best_state: Optional[Dict[str, torch.Tensor]] = None
+
+        # Set the direction for optimization
+        self.mode_worse = np.Inf if mode == 'min' else -np.Inf
+        self.mode_better = -np.Inf if mode == 'min' else np.Inf
+
+    def __call__(
+            self,
+            val_metric: float,
+            model: torch.nn.Module,
+            use_wandb: bool = False,
+            epoch: Optional[int] = None
+    ) -> bool:
+        """
+        Args:
+            val_metric (float): Validation metric to monitor
+            model (torch.nn.Module): Model to save
+            use_wandb (bool): Whether to use weights & biases logging
+            epoch (int, optional): Current epoch number for logging
+
+        Returns:
+            bool: True if training should stop early, False otherwise
+        """
+        score = -val_metric if self.mode == 'min' else val_metric
+
+        if self.best_score is None:
+            self.best_score = score
+            self.save_checkpoint(val_metric, model, use_wandb)
+        elif score < self.best_score + self.delta:
+            self.counter += 1
+            if self.verbose:
+                self.trace_func(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+                if epoch is not None:
+                    self.trace_func(f'Current epoch: {epoch}')
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_score = score
+            self.save_checkpoint(val_metric, model, use_wandb)
+            self.counter = 0
+
+        return self.early_stop
+
+    def save_checkpoint(
+            self,
+            val_metric: float,
+            model: torch.nn.Module,
+            use_wandb: bool = False
+    ) -> None:
+        """Saves model when validation metric improves."""
+        if self.verbose:
+            improvement = 'decreased' if self.mode == 'min' else 'increased'
+            self.trace_func(f'Validation metric {improvement} ({val_metric:.6f}). Saving model...')
+
+        # Save model state
+        self.best_state = {
+            k: v.cpu() for k, v in model.state_dict().items()
+        }
+
+        try:
+            torch.save({
+                'model_state_dict': self.best_state,
+                'best_score': self.best_score,
+                'counter': self.counter,
+                'val_metric': val_metric
+            }, self.save_path)
+        except Exception as e:
+            warnings.warn(f"Error saving checkpoint: {str(e)}")
+
+        if use_wandb:
+            try:
+                import wandb
+                wandb.save(str(self.save_path))
+                wandb.log({
+                    'best_val_metric': val_metric,
+                    'early_stopping_counter': self.counter
+                })
+            except ImportError:
+                warnings.warn("wandb not installed. Skipping wandb logging.")
+            except Exception as e:
+                warnings.warn(f"Error logging to wandb: {str(e)}")
+
+    def load_best_model(self, model: torch.nn.Module) -> None:
+        """
+        Loads the best model state.
+
+        Args:
+            model (torch.nn.Module): Model to load the best state into
+        """
+        if self.best_state is not None:
+            model.load_state_dict(self.best_state)
+        elif self.save_path.exists():
+            try:
+                checkpoint = torch.load(self.save_path)
+                model.load_state_dict(checkpoint['model_state_dict'])
+            except Exception as e:
+                raise RuntimeError(f"Error loading checkpoint: {str(e)}")
+        else:
+            raise RuntimeError("No best model state found to load")
+
+    def get_best_score(self) -> float:
+        """Returns the best score achieved."""
+        return self.best_score if self.best_score is not None else self.mode_worse
+
+
 
 class LossHistory():
     def __init__(self, log_dir, model, input_shape, val_loss_flag=True):
@@ -161,6 +313,68 @@ class EvalCallback():
         image = Image.fromarray(np.uint8(pr))
         return image
 
+    def get_miou_png_Supervision(self, image):
+        # ---------------------------------------------------------#
+        #   在这里将图像转换成RGB图像，防止灰度图在预测时报错。
+        #   代码仅仅支持RGB图像的预测，所有其它类型的图像都会转化成RGB
+        # ---------------------------------------------------------#
+        image = cvtColor(image)
+        orininal_h = np.array(image).shape[0]
+        orininal_w = np.array(image).shape[1]
+        # ---------------------------------------------------------#
+        #   给图像增加灰条，实现不失真的resize
+        #   也可以直接resize进行识别
+        # ---------------------------------------------------------#
+        image_data, nw, nh = resize_image(image, (self.input_shape[1], self.input_shape[0]))
+        # ---------------------------------------------------------#
+        #   添加上batch_size维度
+        # ---------------------------------------------------------#
+        image_data = np.expand_dims(np.transpose(preprocess_input(np.array(image_data, np.float32)), (2, 0, 1)), 0)
+
+        with torch.no_grad():
+            images = torch.from_numpy(image_data)
+            if self.cuda:
+                images = images.cuda()
+
+            # ---------------------------------------------------#
+            #   图片传入网络进行预测
+            # ---------------------------------------------------#
+            outputs = self.net(images)
+            if isinstance(outputs, (tuple, list)):
+                pr = outputs[0]  # 仅取主输出
+            else:
+                pr = outputs
+
+            # ---------------------------------------------------#
+            #   确保 pr 是一个 [1, num_classes, H, W] 的张量
+            # ---------------------------------------------------#
+            if pr.dim() == 4:
+                pr = pr.squeeze(0)  # 变为 [num_classes, H, W]
+            elif pr.dim() != 3:
+                raise ValueError(f"Expected pr to be 3D tensor, but got {pr.dim()}D tensor.")
+
+            # ---------------------------------------------------#
+            #   取出每一个像素点的种类
+            # ---------------------------------------------------#
+            pr = F.softmax(pr.permute(1, 2, 0), dim=-1).cpu().numpy()  # 变为 [H, W, num_classes]
+
+            # --------------------------------------#
+            #   将灰条部分截取掉
+            # --------------------------------------#
+            pr = pr[int((self.input_shape[0] - nh) // 2): int((self.input_shape[0] - nh) // 2 + nh),
+                 int((self.input_shape[1] - nw) // 2): int((self.input_shape[1] - nw) // 2 + nw)]
+            # ---------------------------------------------------#
+            #   进行图片的resize
+            # ---------------------------------------------------#
+            pr = cv2.resize(pr, (orininal_w, orininal_h), interpolation=cv2.INTER_LINEAR)
+            # ---------------------------------------------------#
+            #   取出每一个像素点的种类
+            # ---------------------------------------------------#
+            pr = pr.argmax(axis=-1)
+
+        image = Image.fromarray(np.uint8(pr))
+        return image
+
     def on_epoch_end(self, epoch, model_eval):
         if epoch % self.period == 0 and self.eval_flag:
             self.net = model_eval
@@ -174,7 +388,16 @@ class EvalCallback():
             for image_id in tqdm(self.image_ids):
                 image_path = os.path.join(self.dataset_path, "DataB/JPEGImages/" + image_id + ".jpg")
                 image = Image.open(image_path)
-                image = self.get_miou_png(image)
+                try:
+                    image = self.get_miou_png(image)
+                except Exception as e:
+                    print(f'seme error rise{e},try to switch get_miou_png_Supervision')
+                    image = self.get_miou_png_Supervision(image)
+
+                pred_dir = '/root/autodl-tmp/unet-pytorch/.temp_miou_out/detection-results/'
+                if not os.path.exists(pred_dir):
+                    os.makedirs(pred_dir)
+
                 image.save(os.path.join(pred_dir, image_id + ".png"))
 
             print("Calculate miou.")
@@ -300,4 +523,8 @@ class EvalCallback():
                     print(f"Class {class_id} IoUs: {len(self.class_ious[class_id])}")
 
             print("Get miou done.")
-            shutil.rmtree(self.miou_out_path)
+            miou_out_path = self.miou_out_path  # 假设这是你用的路径
+            if os.path.exists(miou_out_path):
+                shutil.rmtree(miou_out_path)
+            else:
+                print(f"目录 {miou_out_path} 不存在，跳过删除操作")
