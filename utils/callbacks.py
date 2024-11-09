@@ -164,7 +164,7 @@ class EvalCallback():
     def on_epoch_end(self, epoch, model_eval):
         if epoch % self.period == 0 and self.eval_flag:
             self.net = model_eval
-            gt_dir = os.path.join(self.dataset_path, "VOC2012/SegmentationClass/")
+            gt_dir = os.path.join(self.dataset_path, "DataB/SegmentationClass/")
             pred_dir = os.path.join(self.miou_out_path, 'detection-results')
             if not os.path.exists(self.miou_out_path):
                 os.makedirs(self.miou_out_path)
@@ -172,7 +172,7 @@ class EvalCallback():
                 os.makedirs(pred_dir)
             print("Get miou.")
             for image_id in tqdm(self.image_ids):
-                image_path = os.path.join(self.dataset_path, "VOC2012/JPEGImages/" + image_id + ".jpg")
+                image_path = os.path.join(self.dataset_path, "DataB/JPEGImages/" + image_id + ".jpg")
                 image = Image.open(image_path)
                 image = self.get_miou_png(image)
                 image.save(os.path.join(pred_dir, image_id + ".png"))

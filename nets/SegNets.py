@@ -435,6 +435,101 @@ class EfficientDecoderBlock(nn.Module):
         return x
 
 
+class OptimizedBalancedSegWithFPN_Supervision(nn.Module):
+    def __init__(self, num_classes=3):
+        super(OptimizedBalancedSegWithFPN_Supervision,self).__init__()
+        # 编码器块
+        self.enc1 = OptimizedMultiScaleBlock(3, 32)
+        self.enc2 = OptimizedMultiScaleBlock(32, 64)
+        self.enc3 = OptimizedMultiScaleBlock(64, 128)
+        self.enc4 = OptimizedMultiScaleBlock(128, 256)
+
+        # 桥接层
+        self.bridge = nn.Sequential(
+            OptimizedMultiScaleBlock(256, 512),
+            nn.Dropout2d(0.1)
+        )
+
+        # 横向连接
+        self.lateral4 = nn.Conv2d(256, 256, kernel_size=1)
+        self.lateral3 = nn.Conv2d(128, 128, kernel_size=1)
+        self.lateral2 = nn.Conv2d(64, 64, kernel_size=1)
+        self.lateral1 = nn.Conv2d(32, 32, kernel_size=1)
+
+        # 解码器块
+        self.dec4 = EfficientDecoderBlock(512, 256)
+        self.dec3 = EfficientDecoderBlock(256 + 128, 128)
+        self.dec2 = EfficientDecoderBlock(128 + 64, 64)
+        self.dec1 = EfficientDecoderBlock(64 + 32, 32)
+
+        # 边界增强块
+        self.edge_enhancement = EdgeEnhancementBlock(32, 32)
+
+        # 最终卷积层
+        self.final_conv = nn.Sequential(
+            LightweightConvBlock(32, 32),
+            nn.Conv2d(32, num_classes, kernel_size=1)
+        )
+
+        # 深度监督的辅助输出层
+        self.aux_output3 = nn.Conv2d(128, num_classes, kernel_size=1)
+        self.aux_output2 = nn.Conv2d(64, num_classes, kernel_size=1)
+        self.aux_output1 = nn.Conv2d(32, num_classes, kernel_size=1)
+
+    def forward(self, x):
+        # 编码器路径
+        enc1 = self.enc1(x)
+        enc2 = self.enc2(F.max_pool2d(enc1, 2))
+        enc3 = self.enc3(F.max_pool2d(enc2, 2))
+        enc4 = self.enc4(F.max_pool2d(enc3, 2))
+
+        # 桥接层
+        bridge = self.bridge(F.max_pool2d(enc4, 2))
+
+        # 横向连接
+        lat4 = self.lateral4(enc4)
+        lat3 = self.lateral3(enc3)
+        lat2 = self.lateral2(enc2)
+        lat1 = self.lateral1(enc1)
+
+        # 解码器路径
+        dec4 = self.dec4(F.interpolate(bridge, size=enc4.shape[2:], mode='bilinear', align_corners=True))
+        dec4 = F.interpolate(lat4, size=dec4.shape[2:], mode='bilinear', align_corners=True) + dec4
+
+        dec3 = self.dec3(F.interpolate(dec4, size=enc3.shape[2:], mode='bilinear', align_corners=True), enc3)
+        dec3 = F.interpolate(lat3, size=dec3.shape[2:], mode='bilinear', align_corners=True) + dec3
+
+        dec2 = self.dec2(F.interpolate(dec3, size=enc2.shape[2:], mode='bilinear', align_corners=True), enc2)
+        dec2 = F.interpolate(lat2, size=dec2.shape[2:], mode='bilinear', align_corners=True) + dec2
+
+        dec1 = self.dec1(F.interpolate(dec2, size=enc1.shape[2:], mode='bilinear', align_corners=True), enc1)
+        dec1 = F.interpolate(lat1, size=dec1.shape[2:], mode='bilinear', align_corners=True) + dec1
+
+        # 边界增强
+        enhanced_edges = self.edge_enhancement(dec1)
+
+        # 最终输出
+        final = self.final_conv(dec1 + enhanced_edges)
+        final = F.interpolate(final, size=x.shape[2:], mode='bilinear', align_corners=True)
+
+        # 深度监督的辅助输出
+        aux_out3 = self.aux_output3(dec3)
+        aux_out3 = F.interpolate(aux_out3, size=x.shape[2:], mode='bilinear', align_corners=True)
+
+        aux_out2 = self.aux_output2(dec2)
+        aux_out2 = F.interpolate(aux_out2, size=x.shape[2:], mode='bilinear', align_corners=True)
+
+        aux_out1 = self.aux_output1(dec1)
+        aux_out1 = F.interpolate(aux_out1, size=x.shape[2:], mode='bilinear', align_corners=True)
+
+        # 返回主输出和辅助输出
+        return final, aux_out1, aux_out2, aux_out3
+
+
+
+
+
+
 class OptimizedBalancedSegWithFPN(nn.Module):
     def __init__(self, num_classes=3):
         super().__init__()
@@ -831,7 +926,7 @@ class OptimizedBalancedSegWithCRFS(nn.Module):
 
 
 if __name__ == '__main__':
-    model = OptimizedBalancedSegWithCRFS(num_classes=3)
+    model = OptimizedBalancedSegWithFPN_Supervision(num_classes=3)
     dummy_input = torch.randn(1, 3, 256, 256)
     output = model(dummy_input)
     if isinstance(output, tuple):
